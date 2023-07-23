@@ -1,12 +1,12 @@
 %{ 
  Author: Shanglin Li, Photonic DataCom Team, McGill University 
- Date: 04/22/2022
+ Date: April 2023
  Note:
- Please install The Genetic Algorithm Toolbox for MATLAB developed by
- The University of Sheffield (http://uos-codem.github.io/GA-Toolbox/),
- before running this script.
+    The script uses The Genetic Algorithm Toolbox for MATLAB developed by
+	The University of Sheffield (http://uos-codem.github.io/GA-Toolbox/).
 %}
 clear variables
+addpath(genpath(pwd)) 
 min_channel_power=0.5; % the power coupling coefficient of the signal in each channel is required to be not less than 0.5
 max_channel_XT=0.2;
 Dataset_No = input("Which case is chosen? Please input 1 or 2.Input 0 to exit the program.\n");
@@ -18,37 +18,47 @@ if Dataset_No==1
 elseif Dataset_No==2
     Dataset_name='Case_II_dataset';
 elseif Dataset_No==0
-    error('Exit the program!')
+    fprintf(2,'Exit the program!\n');
+    return;
 end
 load(Dataset_name)
 power_beam_PMN=power_beam_PMN';
 [PMN_num,beam_info_num]=size(power_beam_PMN);
-tx_num = input("How many fiber channels are excited? Please input 3 or 4.Input 0 to exit the program.\n");
-while ~ismember(tx_num, [3,4,0])
-    tx_num =input("Your input is WRONG! Please input 3 or 4. Input 0 to exit the program. \n");
+tx_num = input("How many fiber channels are excited? Please input 5 or 6.Input 0 to exit the program.\n");
+while ~ismember(tx_num, [5,6,0])
+    tx_num =input("Your input is WRONG! Please input 5 or 6. Input 0 to exit the program. \n");
 end
 split_PMN=[];
 loop1=1;
-if tx_num==3
-    for sec1=1:1:PMN_num-tx_num+1
-        for  sec2=1:1:PMN_num-sec1-tx_num+2
-            sec3=PMN_num-sec1-sec2;
-            split_PMN(loop1,1:tx_num)=[sec1,sec2,sec3];
-            loop1=loop1+1;
-        end
-    end
-elseif tx_num==4
+if tx_num==5
+	 for sec1=1:1:PMN_num-tx_num+1
+	  for  sec2=1:1:PMN_num-sec1-tx_num+2
+		  for sec3=1:1:PMN_num-sec1-sec2-tx_num+3
+		   for sec4=1:1:PMN_num-sec1-sec2-sec3-tx_num+4
+			   sec5=PMN_num-sec1-sec2-sec3-sec4;
+			   split_PMN(loop1,1:tx_num)=[sec1,sec2,sec3,sec4,sec5];
+			   loop1=loop1+1;
+		   end
+		  end
+	  end
+	end
+elseif tx_num==6
     for sec1=1:1:PMN_num-tx_num+1
         for  sec2=1:1:PMN_num-sec1-tx_num+2
             for sec3=1:1:PMN_num-sec1-sec2-tx_num+3
-                sec4=PMN_num-sec1-sec2-sec3;
-                split_PMN(loop1,1:tx_num)=[sec1,sec2,sec3,sec4];
-                loop1=loop1+1;
+                for sec4=1:1:PMN_num-sec1-sec2-sec3-tx_num+4
+                    for sec5=1:1:PMN_num-sec1-sec2-sec3-sec4-tx_num+5
+                        sec6=PMN_num-sec1-sec2-sec3-sec4-sec5;
+                        split_PMN(loop1,1:tx_num)=[sec1,sec2,sec3,sec4,sec5,sec6];
+                        loop1=loop1+1;
+                    end
+                end
             end
         end
     end
 elseif tx_num==0
-    error('Exit the program!')
+    fprintf(2,'Exit the program!\n');
+    return;
 end
 [split_num,~]=size(split_PMN);
 
@@ -62,29 +72,38 @@ XOVR=1; % Crossover rate
 INSR=0.9; % Insertion rate
 SUBPOP=NIND/400; % the number of sub-populations
 MIGR=0.4; % Migration rate
-MIGGEN=1; % Migration occurs for every MIGGEN generations
+MIGGEN=2; % Migration occurs for every MIGGEN generations
 MUTR=0.2; % Mutation rate
 BaseV=crtbase([tx_num,1],[beam_info_num,split_num]);
 [Chrom,Lind]=crtbp(NIND,BaseV);% Initial population
 Chrom_addone=Chrom+ones(NIND,tx_num+1);
 gen_count=0;
-ObjV=XT_all(power_beam_PMN,split_PMN,Chrom_addone,tx_num,min_channel_power,max_channel_XT);
+ObjV=XT_all(power_beam_PMN,split_PMN,Chrom_addone,tx_num,min_channel_power);
+[Best_ObjV,Index]=min(ObjV);
+Optimal_Chrom=Chrom(Index,:);
 while gen_count<MAXGEN
     FitnV=ranking(ObjV,[2,1],SUBPOP); % Calculate fitness scores
     Selch1=select('sus',Chrom,FitnV,GGAP,SUBPOP); % Selection
     Selch2=recombin('xovsh',Selch1,XOVR,SUBPOP); % Recombination
     Selch3=mutate('mut',Selch2,BaseV,MUTR,SUBPOP);% Mutation
-    ObjV_Sel=XT_all(power_beam_PMN,split_PMN,Selch3+1,tx_num,min_channel_power,max_channel_XT); % Calculate the overall inter-channel crosstalk
+    ObjV_Sel=XT_all(power_beam_PMN,split_PMN,Selch3+1,tx_num,min_channel_power); % Calculate the overall inter-channel crosstalk
     [Chrom, ObjV]=reins(Chrom,Selch3,SUBPOP,[1,INSR],ObjV,ObjV_Sel); % Re-insertion
     gen_count=gen_count+1;
     if (rem(gen_count,MIGGEN)==0)
         [Chrom, ObjV]=migrate(Chrom,SUBPOP,[MIGR,1,1],ObjV); % Migration
     end
+     [Best_ObjV_new,Index]=min(ObjV);
+    if Best_ObjV_new<=Best_ObjV
+        Best_ObjV=Best_ObjV_new;
+        Optimal_Chrom=Chrom(Index,:);
+    else
+        Chrom(1,:)=Optimal_Chrom;
+        ObjV(1,:)=Best_ObjV;
+    end       
     waitbar(gen_count/MAXGEN,f,['Running ',num2str(gen_count/MAXGEN*100,'%.1f'),'%'])
 end
 waitbar(1,f,'The calculation of launch conditions is done!')
-[Best_XT_result,I]=min(ObjV);
-Best_Ind_GA=Chrom(I,:)+1;
+Best_Ind_GA=Optimal_Chrom+1;
 % Output mode-group distribution in each fiber channel
 Best_PMN_Dist_GA=split_PMN(Best_Ind_GA(end),:); 
 MG_start=zeros(tx_num,1); MG_end=zeros(tx_num,1); Best_MG_Channel=strings(1,tx_num);
@@ -112,20 +131,18 @@ Best_block_sum_db_GA=10*log10(Best_block_sum_GA);
 disp('The power coupling coefficient matrix is (in dB):'); disp(Best_block_sum_db_GA);
 
 %% sub-function
-function Eval=XT(powerPMN_tx,split_PMN_ind,min_channel_power,max_channel_XT) % Target Function
+function Eval=XT(powerPMN_tx,split_PMN_ind,min_channel_power) % Target Function
 powerPMN_tx_cell=mat2cell(powerPMN_tx,split_PMN_ind);
 block_sum=cell2mat(cellfun(@(x)sum(x,1),powerPMN_tx_cell,'UniformOutput',false));
-block_sum_XT=tril(block_sum,-1)+triu(block_sum,1);
 target_power=diag(block_sum);
-Rel_XT=(sum(block_sum,2)-target_power)./target_power; % Relative crostalk
-if all(target_power>=min_channel_power) && all(block_sum_XT(:)<=max_channel_XT)  % the requirements of the power coupling coefficient matrices
-    Eval=10*log10(sum(Rel_XT)+1e-60);
+if all(target_power>=min_channel_power)  % the requirements of the power coupling coefficient matrices
+    Eval=sum(-10*log10(target_power+1e-60));
 else
-    Eval= 10*log10(sum(Rel_XT)+1e-60)+1e6; % 1e6 is the penalty when the requirements are not met.
+    Eval=sum(-10*log10(target_power+1e-60)+1e10); % 1e10 is the penalty when the requirements are not met.
 end
 end
 
-function Eval_all=XT_all(power_beam_PMN,split_PMN,chrom,tx_num,min_channel_power,max_channel_XT)
+function Eval_all=XT_all(power_beam_PMN,split_PMN,chrom,tx_num,min_channel_power)
 [nind,~]=size(chrom);
 Eval_all=ones(nind,1);
 for i=1:nind
@@ -134,6 +151,6 @@ for i=1:nind
     SMG=chrom_ind(:,tx_num+1);
     powerPMN_tx=power_beam_PMN(:,tx_No);
     split_PMN_ind=split_PMN(SMG,1:tx_num);
-    Eval_all(i)=XT(powerPMN_tx,split_PMN_ind,min_channel_power,max_channel_XT);
+    Eval_all(i)=XT(powerPMN_tx,split_PMN_ind,min_channel_power);
 end
 end
